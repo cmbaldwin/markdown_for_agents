@@ -5,9 +5,8 @@ require "reverse_markdown"
 module MarkdownForAgents
   class Middleware
     HTML_TYPE = %r{\Atext/html\b}i
-    SKIP_PATHS = [
-      %r{\A/up\z},
-      %r{\A/health(?:z|/|\z)},
+    # Don't rewrite Accept on APIs/assets — those are not HTML documents.
+    SKIP_REWRITE = [
       %r{\A/assets/},
       %r{\A/rails/},
       %r{\A/api/},
@@ -16,17 +15,28 @@ module MarkdownForAgents
       %r{\.json\z}
     ].freeze
 
+    # Health endpoints must still have Accept rewritten (Rails 8.1 406s on
+    # text/markdown) but should keep their native body, not markdown.
+    SKIP_CONVERT = SKIP_REWRITE + [
+      %r{\A/up\z},
+      %r{\A/health(?:z|/|\z)}
+    ].freeze
+
+    SKIP_PATHS = SKIP_CONVERT
+
     def initialize(app)
       @app = app
     end
 
     def call(env)
-      want = prefers_markdown?(env["HTTP_ACCEPT"]) && !skip?(env)
-      env["HTTP_ACCEPT"] = "text/html" if want
+      want = prefers_markdown?(env["HTTP_ACCEPT"])
+      rewrite = want && !skip_rewrite?(env)
+      env["HTTP_ACCEPT"] = "text/html" if rewrite
 
       status, headers, body = @app.call(env)
-      return [status, headers, body] unless want && MarkdownForAgents.convert?
+      return [status, headers, body] unless rewrite && MarkdownForAgents.convert?
       return [status, headers, body] unless html_success?(status, headers)
+      return [status, headers, body] if skip_convert?(env)
 
       html = read_body(body)
       return [status, headers, body] if html.bytesize > MarkdownForAgents.max_bytes
@@ -44,7 +54,12 @@ module MarkdownForAgents
 
     private
 
-    def skip?(env)
+    def skip_rewrite?(env)
+      path = env["PATH_INFO"].to_s
+      SKIP_REWRITE.any? { |re| path.match?(re) }
+    end
+
+    def skip_convert?(env)
       path = env["PATH_INFO"].to_s
       MarkdownForAgents.skip_paths.any? { |re| path.match?(re) }
     end

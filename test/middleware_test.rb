@@ -47,10 +47,18 @@ class MiddlewareTest < MarkdownForAgents::TestCase
     assert_match(%r{\Atext/markdown}, headers["content-type"])
   end
 
-  def test_skips_up
-    status, headers, = request(html_app, path: "/up")
+  def test_rewrites_accept_on_up_but_does_not_convert
+    inner = lambda do |env|
+      if env["HTTP_ACCEPT"] == "text/html"
+        [200, { "content-type" => "text/html" }, ["<html><body>OK</body></html>"]]
+      else
+        [406, { "content-type" => "text/html" }, ["nope"]]
+      end
+    end
+    status, headers, body = request(inner, path: "/up")
     assert_equal 200, status
     assert_match(%r{\Atext/html}, headers["content-type"])
+    assert_match(/<html/i, body.join)
   end
 
   def test_skips_json_api

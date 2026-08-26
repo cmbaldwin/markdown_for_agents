@@ -10,7 +10,7 @@ In production, leave conversion **off** and enable Cloudflare `content_converter
 
 ```ruby
 # Gemfile
-gem "markdown_for_agents", github: "cmbaldwin/markdown_for_agents", tag: "v0.1.0"
+gem "markdown_for_agents", github: "cmbaldwin/markdown_for_agents", tag: "v0.1.1"
 ```
 
 Railtie inserts the middleware. No initializer required.
